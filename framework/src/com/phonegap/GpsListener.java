@@ -34,15 +34,14 @@ public class GpsListener implements LocationListener {
 	 * Automatically starts listening.
 	 * 
 	 * @param ctx
-	 * @param interval
 	 * @param m
 	 */
-	public GpsListener(PhonegapActivity ctx, int interval, GeoListener m) {
+	public GpsListener(PhonegapActivity ctx, GeoListener m) {
 		this.owner = m;
 		this.mCtx = ctx;
 		this.mLocMan = (LocationManager) this.mCtx.getSystemService(Context.LOCATION_SERVICE);
 		this.running = false;
-		this.start(interval);
+		this.start();
 	}
 	
 	/**
@@ -122,13 +121,11 @@ public class GpsListener implements LocationListener {
 	
 	/**
 	 * Start requesting location updates.
-	 * 
-	 * @param interval
 	 */
-	public void start(int interval) {
+	public void start() {
 		if (!this.running) {
 			this.running = true;
-			this.mLocMan.requestLocationUpdates(LocationManager.GPS_PROVIDER, interval, 0, this);
+			this.mLocMan.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, this);
 			this.getLocation();
 
 			// If GPS provider has data, then send now

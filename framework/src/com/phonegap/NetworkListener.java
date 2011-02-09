@@ -33,12 +33,12 @@ public class NetworkListener implements LocationListener {
 	 * @param interval
 	 * @param m
 	 */
-	public NetworkListener(PhonegapActivity ctx, int interval, GeoListener m) {
+	public NetworkListener(PhonegapActivity ctx, GeoListener m) {
 		this.owner = m;
 		this.mCtx = ctx;
 		this.mLocMan = (LocationManager) this.mCtx.getSystemService(Context.LOCATION_SERVICE);
 		this.running = false;
-		this.start(interval);
+		this.start();
 	}
 	
 	/**
@@ -113,13 +113,11 @@ public class NetworkListener implements LocationListener {
 	
 	/**
 	 * Start requesting location updates.
-	 * 
-	 * @param interval
 	 */
-	public void start(int interval)	{
+	public void start()	{
 		if (!this.running) {
 			this.running = true;
-			this.mLocMan.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, interval, 0, this);
+			this.mLocMan.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 0, 0, this);
 			this.getLocation();
 			
 			// If Network provider has data but GPS provider doesn't, then send ours

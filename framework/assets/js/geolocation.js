@@ -35,37 +35,57 @@ PositionError.POSITION_UNAVAILABLE = 2;
 PositionError.TIMEOUT = 3;
 
 /**
- * Asynchronously aquires the current position.
+ * Asynchronously acquires the current position.
  *
  * @param {Function} successCallback    The function to call when the position data is available
  * @param {Function} errorCallback      The function to call when there is an error getting the heading position. (OPTIONAL)
  * @param {PositionOptions} options     The options for getting the position data. (OPTIONAL)
  */
 Geolocation.prototype.getCurrentPosition = function(successCallback, errorCallback, options) {
-    if (navigator._geo.listeners["global"]) {
-        console.log("Geolocation Error: Still waiting for previous getCurrentPosition() request.");
-        try {
-            errorCallback(new PositionError(PositionError.TIMEOUT, "Geolocation Error: Still waiting for previous getCurrentPosition() request."));
-        } catch (e) {
-        }
+    if (successCallback == null) {
         return;
     }
-    var maximumAge = 10000;
+
+    var maximumAge = 0;
+    var timeout = 2147483647;		// 2^31-1, practically infinity for our purposes
     var enableHighAccuracy = false;
-    var timeout = 10000;
     if (typeof options != "undefined") {
         if (typeof options.maximumAge != "undefined") {
-            maximumAge = options.maximumAge;
+             if (options.maximumAge > 0) {
+                 maximumAge = options.maximumAge;
+            }
+        }
+        if (typeof options.timeout != "undefined") {
+            if (options.timeout >= 0) {
+                timeout = options.timeout;
+            } else {
+                timeout = 0;
+            }
         }
         if (typeof options.enableHighAccuracy != "undefined") {
             enableHighAccuracy = options.enableHighAccuracy;
         }
-        if (typeof options.timeout != "undefined") {
-            timeout = options.timeout;
+    }
+
+    if (this.lastPosition != null) {
+        if ((new Date().getTime() - this.lastPosition.timestamp.getTime()) <= maximumAge) {
+            successCallback(this.lastPosition);
+            return;
         }
     }
-    navigator._geo.listeners["global"] = {"success" : successCallback, "fail" : errorCallback };
-    PhoneGap.exec(null, null, "Geolocation", "getCurrentLocation", [enableHighAccuracy, timeout, maximumAge]);
+
+    if (timeout == 0) {
+        if (typeof errorCallback != "undefined") {
+            errorCallback(new PositionError(PositionError.TIMEOUT, "No suitable cached position and timeout set to 0."));
+        }
+        return;
+    }
+
+    var id = 'g' + PhoneGap.createUUID();
+    navigator._geo.listeners[id] = {"success" : successCallback, "fail" : errorCallback };
+    PhoneGap.exec(null, null, "Geolocation", "getCurrentPosition", [id, enableHighAccuracy]);
+
+    navigator._geo.listeners[id].timer = setTimeout("navigator._geo.listeners['" + id + "'].timer = null; navigator._geo.fail('" + id + "', PositionError.TIMEOUT, 'Timeout expired.');", timeout);
 }
 
 /**
@@ -78,27 +98,62 @@ Geolocation.prototype.getCurrentPosition = function(successCallback, errorCallba
  * @return String                       The watch id that must be passed to #clearWatch to stop watching.
  */
 Geolocation.prototype.watchPosition = function(successCallback, errorCallback, options) {
-    var maximumAge = 10000;
+    if (successCallback == null) {
+        return;
+    }
+
+    var maximumAge = 0;
+    var timeout = 2147483647;		// 2^31-1, practically infinity for our purposes
     var enableHighAccuracy = false;
-    var timeout = 10000;
     if (typeof options != "undefined") {
-        if (typeof options.frequency  != "undefined") {
-            maximumAge = options.frequency;
-        }
         if (typeof options.maximumAge != "undefined") {
-            maximumAge = options.maximumAge;
+             if (options.maximumAge > 0) {
+                 maximumAge = options.maximumAge;
+            }
+        }
+        if (typeof options.timeout != "undefined") {
+            if (options.timeout >= 0) {
+                timeout = options.timeout;
+            } else {
+                timeout = 0;
+            }
         }
         if (typeof options.enableHighAccuracy != "undefined") {
             enableHighAccuracy = options.enableHighAccuracy;
         }
-        if (typeof options.timeout != "undefined") {
-            timeout = options.timeout;
+    }
+
+    if (this.lastPosition != null) {
+        if ((new Date().getTime() - this.lastPosition.timestamp.getTime()) <= maximumAge) {
+            successCallback(this.lastPosition);
         }
     }
-    var id = PhoneGap.createUUID();
-    navigator._geo.listeners[id] = {"success" : successCallback, "fail" : errorCallback };
-    PhoneGap.exec(null, null, "Geolocation", "start", [id, enableHighAccuracy, timeout, maximumAge]);
-    return id;
+
+    // This does not actually generate a random 128 bit number, but whatever...
+    var id = 0;
+    for (var i = 0; i < 16; i++)
+        id = (id << 8) + Math.floor((Math.random() * 256));
+    var idString = id.toString();
+
+    navigator._geo.listeners[idString] = {"success" : successCallback, "fail" : errorCallback, timeout: timeout };
+    PhoneGap.exec(null, null, "Geolocation", "watchPosition", [idString, enableHighAccuracy]);
+
+    navigator._geo.listeners[idString].timer = setTimeout("navigator._geo.listeners['" + idString + "'].timer = null; navigator._geo.fail('" + idString + "', PositionError.TIMEOUT, 'Timeout expired.');", timeout);
+}
+
+/**
+ * Clears the specified heading watch.
+ *
+ * @param {String} id       The ID of the watch returned from #watchPosition
+ */
+Geolocation.prototype.clearWatch = function(id) {
+    if (!(id in navigator._geo.listeners) || (id.charAt(0) == 'g')) {
+        return;
+    }
+
+    clearTimeout(navigator._geo.listeners[id].timer);
+    PhoneGap.exec(null, null, "Geolocation", "clearWatch", [id]);
+    delete navigator._geo.listeners[id];
 };
 
 /*
@@ -109,31 +164,26 @@ Geolocation.prototype.watchPosition = function(successCallback, errorCallback, o
  * @param {Number} lat
  * @param {Number} lng
  * @param {Number} alt
- * @param {Number} altacc
+ * @param {Number} acc
  * @param {Number} head
  * @param {Number} vel
+ * @param {Number} altacc
  * @param {Number} stamp
  */
-Geolocation.prototype.success = function(id, lat, lng, alt, altacc, head, vel, stamp) {
-    var coords = new Coordinates(lat, lng, alt, altacc, head, vel);
-    var loc = new Position(coords, stamp);
-    try {
-        if (lat == "undefined" || lng == "undefined") {
-            navigator._geo.listeners[id].fail(new PositionError(PositionError.POSITION_UNAVAILABLE, "Lat/Lng are undefined."));
-        }
-        else {
-            navigator._geo.lastPosition = loc;
-            navigator._geo.listeners[id].success(loc);
-        }
-    }
-    catch (e) {
-        console.log("Geolocation Error: Error calling success callback function.");
-    }
+Geolocation.prototype.success = function(id, lat, lng, alt, acc, head, vel, altacc, stamp) {
+    clearTimeout(navigator._geo.listeners[id].timer);
 
-    if (id == "global") {
-        delete navigator._geo.listeners["global"];
+    var coords = new Coordinates(lat, lng, alt, acc, head, vel, altacc);
+    var loc = new Position(coords, stamp);
+    this.lastPosition = loc;
+    navigator._geo.listeners[id].success(loc);
+
+    if (id.charAt(0) == 'g') {
+        delete navigator._geo.listeners[id];
+    } else {
+        navigator._geo.listeners[id].timer = setTimeout("navigator._geo.listeners['" + id + "'].timer = null; navigator._geo.fail('" + id + "', PositionError.TIMEOUT, 'Timeout expired.');", navigator._geo.listeners[id].timeout);
     }
-};
+}
 
 /**
  * Native callback when watch position has an error.
@@ -144,23 +194,27 @@ Geolocation.prototype.success = function(id, lat, lng, alt, altacc, head, vel, s
  * @param {String} msg      The error message
  */
 Geolocation.prototype.fail = function(id, code, msg) {
-    try {
-        navigator._geo.listeners[id].fail(new PositionError(code, msg));
+    if (navigator._geo.listeners[id].timer != null) {
+        clearTimeout(navigator._geo.listeners[id].timer);
+    } else if (id.charAt(0) == 'g') {
+        PhoneGap.exec(null, null, "Geolocation", "clearWatch", [id]);
     }
-    catch (e) {
-        console.log("Geolocation Error: Error calling error callback function.");
-    }
-};
 
-/**
- * Clears the specified heading watch.
- *
- * @param {String} id       The ID of the watch returned from #watchPosition
- */
-Geolocation.prototype.clearWatch = function(id) {
-    PhoneGap.exec(null, null, "Geolocation", "stop", [id]);
-    delete navigator._geo.listeners[id];
-};
+    if (navigator._geo.listeners[id].fail != null) {
+        // For some reason new PositionError(code, msg) doesn't work
+        var err = new PositionError(null, null);
+        err.code = code;
+        err.message = msg;
+
+        navigator._geo.listeners[id].fail(err);
+    }
+
+    if (id.charAt(0) == 'g') {
+        delete navigator._geo.listeners[id];
+    } else {
+        navigator._geo.listeners[id].timer = setTimeout("navigator._geo.listeners['" + id + "'].timer = null; navigator._geo.fail('" + id + "', PositionError.TIMEOUT, 'Timeout expired.');", navigator._geo.listeners[id].timeout);
+    }
+}
 
 /**
  * Force the PhoneGap geolocation to be used instead of built-in.
@@ -174,12 +228,9 @@ Geolocation.usePhoneGap = function() {
 
     // Set built-in geolocation methods to our own implementations
     // (Cannot replace entire geolocation, but can replace individual methods)
-    navigator.geolocation.setLocation = navigator._geo.setLocation;
     navigator.geolocation.getCurrentPosition = navigator._geo.getCurrentPosition;
     navigator.geolocation.watchPosition = navigator._geo.watchPosition;
     navigator.geolocation.clearWatch = navigator._geo.clearWatch;
-    navigator.geolocation.start = navigator._geo.start;
-    navigator.geolocation.stop = navigator._geo.stop;
 };
 
 PhoneGap.addConstructor(function() {

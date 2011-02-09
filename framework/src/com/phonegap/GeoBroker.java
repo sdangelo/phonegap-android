@@ -26,7 +26,6 @@ public class GeoBroker extends Plugin {
     
     // List of gGeolocation listeners
     private HashMap<String, GeoListener> geoListeners;
-	private GeoListener global;
 	
 	/**
 	 * Constructor.
@@ -48,14 +47,14 @@ public class GeoBroker extends Plugin {
 		String result = "";		
 		
 		try {
-			if (action.equals("getCurrentLocation")) {
-				this.getCurrentLocation(args.getBoolean(0), args.getInt(1), args.getInt(2));
+			if (action.equals("getCurrentPosition")) {
+				this.start(args.getString(0), args.getBoolean(1));
 			}
-			else if (action.equals("start")) {
-				String s = this.start(args.getString(0), args.getBoolean(1), args.getInt(2), args.getInt(3));
+			else if (action.equals("watchPosition")) {
+				String s = this.start(args.getString(0), args.getBoolean(1));
 				return new PluginResult(status, s);
 			}
-			else if (action.equals("stop")) {
+			else if (action.equals("clearWatch")) {
 				this.stop(args.getString(0));
 			}
 			return new PluginResult(status, result);
@@ -88,10 +87,6 @@ public class GeoBroker extends Plugin {
             listener.destroy();
 		}
         this.geoListeners.clear();
-        if (this.global != null) {
-        	this.global.destroy();
-        }
-        this.global = null;
     }
 
     //--------------------------------------------------------------------------
@@ -102,41 +97,13 @@ public class GeoBroker extends Plugin {
      * Get current location.
      * The result is returned to JavaScript via a callback.
      * 
-	 * @param enableHighAccuracy
-	 * @param timeout
-	 * @param maximumAge
-     */
-	public void getCurrentLocation(boolean enableHighAccuracy, int timeout, int maximumAge) {
-		
-		// Create a geolocation listener just for getCurrentLocation and call it "global"
-		if (this.global == null) {
-			this.global = new GeoListener(this, "global", maximumAge);
-		}
-		else {
-			this.global.start(maximumAge);
-		}
-	}
-	
-	/**
-	 * Start geolocation listener and add to listener list.
-	 * 
 	 * @param key					The listener id
 	 * @param enableHighAccuracy
-	 * @param timeout
-	 * @param maximumAge
-	 * @return
-	 */
-	public String start(String key, boolean enableHighAccuracy, int timeout, int maximumAge) {
-		
-		// Make sure this listener doesn't already exist
-		GeoListener listener = geoListeners.get(key);
-		if (listener == null) {
-			listener = new GeoListener(this, key, maximumAge);
-			geoListeners.put(key, listener);
-		}
-		
-		// Start it
-		listener.start(maximumAge);
+     */
+	public String start(String key, boolean enableHighAccuracy) {
+		GeoListener listener = new GeoListener(this, key);
+		geoListeners.put(key, listener);
+		listener.start();
 		return key;
 	}
 	
@@ -147,8 +114,6 @@ public class GeoBroker extends Plugin {
 	 */
 	public void stop(String key) {
 		GeoListener listener = geoListeners.remove(key);
-		if (listener != null) {
-			listener.stop();
-		}
+		listener.stop();
 	}
 }

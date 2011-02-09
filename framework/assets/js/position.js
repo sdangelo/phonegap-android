@@ -8,20 +8,25 @@
 
 /**
  * This class contains position information.
- * @param {Object} lat
- * @param {Object} lng
- * @param {Object} acc
- * @param {Object} alt
- * @param {Object} altacc
- * @param {Object} head
- * @param {Object} vel
- * @constructor
+ * @param {Object} coords
+ * @param {Number} timestamp
  */
 function Position(coords, timestamp) {
 	this.coords = coords;
 	this.timestamp = (timestamp != 'undefined') ? timestamp : new Date().getTime();
 }
 
+/**
+ * This class contains coordinates information.
+ * @param {Number} lat
+ * @param {Number} lng
+ * @param {Number} alt
+ * @param {Number} acc
+ * @param {Number} head
+ * @param {Number} vel
+ * @param {Number} altacc
+ * @constructor
+ */
 function Coordinates(lat, lng, alt, acc, head, vel, altacc) {
 	/**
 	 * The latitude of the position.
@@ -50,7 +55,7 @@ function Coordinates(lat, lng, alt, acc, head, vel, altacc) {
 	/**
 	 * The altitude accuracy of the position.
 	 */
-	this.altitudeAccuracy = (altacc != 'undefined') ? altacc : null; 
+	this.altitudeAccuracy = altacc; 
 }
 
 /**
